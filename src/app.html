@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#f5f2ea" />
+		<meta name="color-scheme" content="light" />
+
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+
+		%sveltekit.head%
+
+		<!--
+			Motion preference must be resolved BEFORE first paint.
+			Priority: saved choice → OS preference → on.
+			Sets data-motion on <html> and the .js flag that gates all
+			entrance animation, so nothing ever animates by surprise and
+			nothing is ever hidden when JS is unavailable.
+		-->
+		<script>
+			(function () {
+				var saved = null;
+				try {
+					saved = localStorage.getItem('mt-motion');
+				} catch (e) {
+					/* Safari private mode throws — the site must still boot */
+				}
+				if (!saved) {
+					saved = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'off' : 'on';
+				}
+				document.documentElement.dataset.motion = saved;
+				document.documentElement.classList.add('js');
+			})();
+
+			/* Theme must also be resolved before first paint, for the same
+			   reason: the surface colour is set on <body>, so resolving it
+			   late means a white flash on a dark-preferring display. */
+			(function () {
+				var saved = null;
+				try {
+					saved = localStorage.getItem('mt-theme');
+				} catch (e) {}
+				if (saved !== 'light' && saved !== 'dark') {
+					saved = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				}
+				document.documentElement.dataset.theme = saved;
+				var meta = document.querySelector('meta[name="theme-color"]');
+				if (meta) meta.setAttribute('content', saved === 'dark' ? '#141414' : '#f5f2ea');
+			})();
+		</script>
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
