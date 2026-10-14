@@ -5,5 +5,8 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	build: {
 		target: 'es2022'
-	}
+	},
+    server: {
+      allowedHosts: true
+    }
 });
