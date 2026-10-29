@@ -8,14 +8,14 @@ import { contactLimits, emailDraft, submitContact, validateContact } from '../sr
 
 const valid = { name: 'A Visitor', email: 'visitor@example.com', message: 'A project enquiry', website: '' };
 const env = {
-	MAILERSEND_API_TOKEN: 'test-only', MAILERSEND_TO: 'owner@example.com', MAILERSEND_FROM: 'form@example.com',
+	RESEND_API_KEY: 'test-only', RESEND_TO: 'owner@example.com', RESEND_FROM: 'form@example.com',
 	UPSTASH_REDIS_REST_URL: 'https://test.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'test-only'
 };
 const requests: { url: string; init?: RequestInit }[] = [];
 const success: typeof fetch = async (input, init) => {
 	requests.push({ url: String(input), init });
 	return String(input).includes('upstash') ? Response.json({ result: [1, 0] })
-		: new Response(null, { status: 202, headers: { 'x-message-id': 'test-id' } });
+		: Response.json({ id: 'test-id' });
 };
 const hanging: typeof fetch = async (_input, init) => new Promise((_resolve, reject) => {
 	const timer = setTimeout(() => reject(new Error('Transport did not abort')), 1000);
@@ -82,6 +82,14 @@ test('method and exact-origin checks reject unrelated sites', async () => {
 
 test('configuration and trusted client IP failures disable sending', async () => {
 	assert.equal((await invoke(valid, { env: {} })).status, 503);
+	for (const name of ['RESEND_API_KEY', 'RESEND_TO', 'RESEND_FROM']) {
+		let calls = 0;
+		assert.equal((await invoke(valid, { env: { ...env, [name]: '' }, transport: async () => {
+			calls++;
+			throw new Error('Missing provider config must not contact Redis or Resend');
+		} })).status, 503);
+		assert.equal(calls, 0);
+	}
 	assert.equal((await invoke(valid, { env: { ...env, UPSTASH_REDIS_REST_TOKEN: '' } })).status, 503);
 	assert.equal((await invoke(valid, { env: { ...env, VERCEL: '1' } }, { 'x-forwarded-for': '1.2.3.4' })).status, 503);
 	assert.equal((await invoke(valid, { env: { ...env, VERCEL: '1' } }, { 'x-vercel-forwarded-for': '1.2.3.4' })).status, 200);
@@ -106,11 +114,13 @@ test('shared quota hashes identifiers and uses the same global key for different
 	};
 	await checkContactLimit('1.2.3.4', env, transport);
 	await checkContactLimit('5.6.7.8', env, transport);
+	await checkContactLimit('1.2.3.4', { ...env, RESEND_TO: 'other@example.com' }, transport);
 	assert.equal(commands[0][0], 'EVAL');
 	assert.equal(commands[0][4], commands[1][4]);
 	assert.notEqual(commands[0][3], commands[1][3]);
+	assert.notEqual(commands[0][4], commands[2][4]);
 	assert(!commands[0].slice(3).join('').includes('1.2.3.4'));
-	assert(!commands[0].slice(3).join('').includes(env.MAILERSEND_TO));
+	assert(!commands[0].slice(3).join('').includes(env.RESEND_TO));
 });
 
 test('limiter rejection, malformed result and timeout fail closed', async () => {
@@ -120,24 +130,79 @@ test('limiter rejection, malformed result and timeout fail closed', async () => 
 	await assert.rejects(checkContactLimit('1.2.3.4', env, hanging, 5));
 });
 
-test('provider payload is plain text; logs contain no message, email or token', async () => {
+test('Resend receives the verified sender, recipient, visitor reply-to and plain text', async () => {
 	requests.length = 0;
 	const logs: unknown[] = [];
 	assert.equal((await invoke({ ...valid, message: '<script>private</script>' }, { log: (...args) => logs.push(args) })).status, 200);
-	const sent = JSON.parse(String(requests.find((request) => request.url.includes('mailersend'))?.init?.body));
+	const provider = requests.find((request) => request.url === 'https://api.resend.com/emails');
+	assert(provider);
+	assert.equal(new Headers(provider.init?.headers).get('authorization'), `Bearer ${env.RESEND_API_KEY}`);
+	const sent = JSON.parse(String(provider.init?.body));
+	assert.equal(sent.from, `Personal site contact form <${env.RESEND_FROM}>`);
+	assert.deepEqual(sent.to, [env.RESEND_TO]);
+	assert.equal(sent.subject, `Contact form — ${valid.name}`);
 	assert.equal(sent.text, '<script>private</script>');
-	assert.equal(sent.reply_to.email, valid.email);
+	assert.equal(sent.reply_to, valid.email);
 	assert.equal(sent.html, undefined);
 	assert.deepEqual(logs, [['accepted']]);
+	requests.length = 0;
+	await invoke(valid, { env: { ...env, RESEND_FROM_NAME: 'Portfolio' } });
+	assert.equal(JSON.parse(String(requests.find((request) => request.url.includes('api.resend.com'))?.init?.body)).from,
+		`Portfolio <${env.RESEND_FROM}>`);
 });
 
-test('provider rejection, unexpected success, suppression, pause and timeout retain failure', async () => {
-	for (const response of [new Response(null, { status: 422 }), new Response(null, { status: 200 }), new Response(null, { status: 202 }), new Response(null, { status: 202, headers: { 'x-message-id': 'id', 'x-send-paused': 'true' } })]) {
+test('provider rejection, malformed acknowledgement and timeout retain failure', async () => {
+	for (const response of [
+		Response.json({ name: 'validation_error' }, { status: 422 }),
+		new Response('Not JSON', { status: 200 }), Response.json({}),
+		Response.json({ id: '' }), Response.json({ id: ' ' }), Response.json({ id: 42 }),
+		Response.json(null), Response.json([{ id: 'id' }]),
+		Response.json({ id: 'id' }, { status: 202 }),
+		Response.json({ id: 'id' }, { status: 500 })
+	]) {
 		const transport: typeof fetch = async (url) => String(url).includes('upstash') ? Response.json({ result: [1, 0] }) : response;
 		assert.equal((await invoke(valid, { transport })).status, 502);
 	}
 	const transport: typeof fetch = async (url, init) => String(url).includes('upstash') ? Response.json({ result: [1, 0] }) : hanging(url, init);
 	assert.equal((await invoke(valid, { transport, providerTimeoutMs: 5 })).status, 502);
+});
+
+test('Resend quota and rate limits preserve drafts and only forward a valid retry delay', async () => {
+	for (const code of ['daily_quota_exceeded', 'monthly_quota_exceeded', 'rate_limit_exceeded']) {
+		for (const retry of ['60', 'invalid', '-10']) {
+			const logs: unknown[] = [];
+			const transport: typeof fetch = async (url) => String(url).includes('upstash')
+				? Response.json({ result: [1, 0] })
+				: Response.json({ name: code, message: valid.email }, { status: 429, headers: { 'Retry-After': retry } });
+			const result = await invoke(valid, { transport, log: (...args) => logs.push(args) });
+			assert.equal(result.status, 429);
+			assert.equal(result.headers['retry-after'], retry === '60' ? 60 : undefined);
+			assert.deepEqual(logs, [['provider_throttled', 429, code]]);
+		}
+	}
+});
+
+test('provider authorization failures report unavailable and log only a safe provider code', async () => {
+	for (const status of [401, 403]) {
+		for (const [body, code] of [
+			[{ name: 'validation_error', message: 'The domain is not verified.' }, 'validation_error'],
+			[{ name: 'restricted_api_key', message: `Private ${valid.email} ${env.RESEND_API_KEY}` }, 'restricted_api_key'],
+			[{ name: 'suspended_api_key', message: '<script>private</script>' }, 'suspended_api_key'],
+			[{ name: env.RESEND_API_KEY, message: valid.message }, undefined],
+			[null, undefined]
+		]) {
+			const logs: unknown[] = [];
+			const transport: typeof fetch = async (url) => String(url).includes('upstash')
+				? Response.json({ result: [1, 0] }) : Response.json(body, { status });
+			const result = await invoke(valid, { transport, log: (...args) => logs.push(args) });
+			assert.equal(result.status, 503);
+			assert.deepEqual(result.body, { error: 'The contact service is unavailable. Please email directly.' });
+			assert.deepEqual(logs, [['provider_authorization_failed', status, code]]);
+		}
+	}
+	const result = await submitContact(valid, async () => Response.json({}, { status: 503 }));
+	assert.equal(result.ok, false);
+	assert.match(result.message, /service is unavailable/);
 });
 
 test('client transport distinguishes failure statuses without mutating the draft', async () => {

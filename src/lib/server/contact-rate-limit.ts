@@ -21,7 +21,7 @@ export async function checkContactLimit(
 	if (!url || !token || new URL(url).protocol !== 'https:') throw new Error('limiter_config');
 	// Keyed digests keep raw IPs and recipient addresses out of Redis.
 	const hash = (value: string) => createHmac('sha256', token).update(value).digest('hex');
-	const namespace = `contact:${hash(env.MAILERSEND_TO || '')}`;
+	const namespace = `contact:${hash(env.RESEND_TO || '')}`;
 	const daily = Number(env.CONTACT_DAILY_LIMIT || 25);
 	if (!Number.isSafeInteger(daily) || daily < 1) throw new Error('limiter_config');
 	const response = await transport(url, {

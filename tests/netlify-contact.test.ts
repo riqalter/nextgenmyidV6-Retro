@@ -4,13 +4,13 @@ import handler, { createNetlifyContactHandler } from '../netlify/functions/conta
 
 const valid = { name: 'A Visitor', email: 'visitor@example.com', message: 'A project enquiry', website: '' };
 const env = {
-	MAILERSEND_API_TOKEN: 'test-token', MAILERSEND_TO: 'owner@example.com', MAILERSEND_FROM: 'form@example.com',
+	RESEND_API_KEY: 'test-token', RESEND_TO: 'owner@example.com', RESEND_FROM: 'form@example.com',
 	UPSTASH_REDIS_REST_URL: 'https://test.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'test-redis-token'
 };
 type Options = NonNullable<Parameters<typeof createNetlifyContactHandler>[0]>;
 const noRequests: typeof fetch = async () => { throw new Error('Unexpected external request'); };
 const success: typeof fetch = async (url) => String(url).includes('upstash') ? Response.json({ result: [1, 0] })
-	: new Response(null, { status: 202, headers: { 'x-message-id': 'test-id' } });
+	: Response.json({ id: 'test-id' });
 
 function request(body = JSON.stringify(valid), init: RequestInit = {}, url = 'https://preview.netlify.app/api/contact') {
 	return new Request(url, { method: 'POST', body, ...init, headers: { 'Content-Type': 'application/json', ...init.headers } });
@@ -113,4 +113,9 @@ test('Netlify preserves Retry-After, configuration failures and provider failure
 	const rejected = await invoke(request(), { transport: async (url) => String(url).includes('upstash')
 		? Response.json({ result: [1, 0] }) : new Response(null, { status: 422 }) });
 	assert.equal(rejected.status, 502);
+	const unauthorized = await invoke(request(), { transport: async (url) => String(url).includes('upstash')
+		? Response.json({ result: [1, 0] }) : Response.json({ name: 'validation_error', message: 'Domain is not verified.' }, { status: 403 }) });
+	assert.equal(unauthorized.status, 503);
+	assert.equal(unauthorized.headers.get('cache-control'), 'no-store');
+	assert.deepEqual(await unauthorized.json(), { error: 'The contact service is unavailable. Please email directly.' });
 });

@@ -13,6 +13,7 @@
     "check": "npm run check:web && npm run check:api",
     "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/*.test.js",
     "test:preview": "node scripts/preview-smoke.mjs",
+    "contact:doctor": "node --env-file-if-exists=.env scripts/contact-doctor.mjs",
     "verify": "npm run check && npm test && npm run build"
   },
   "devDependencies": {

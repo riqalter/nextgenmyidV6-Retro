@@ -46,10 +46,10 @@ runtime. Redeploy after changing hosted variables. See
 | Variable | Use |
 | --- | --- |
 | `GITHUB_TOKEN` | Optional read-only public GitHub access for build-time fetching. `GH_TOKEN` is also recognised. |
-| `MAILERSEND_API_TOKEN` | Required for the contact form: MailerSend token with email sending permission. |
-| `MAILERSEND_TO` | Required: the inbox receiving contact messages. |
-| `MAILERSEND_FROM` | Required: a verified MailerSend sender. It may differ from the recipient. |
-| `MAILERSEND_FROM_NAME` | Optional sender display name. |
+| `RESEND_API_KEY` | Required for the contact form: Resend API key with Sending access, optionally restricted to your sending domain. |
+| `RESEND_TO` | Required: the inbox receiving contact messages. |
+| `RESEND_FROM` | Required: a bare email address on a domain verified in Resend. It may differ from the recipient. |
+| `RESEND_FROM_NAME` | Optional sender display name. |
 | `UPSTASH_REDIS_REST_URL` | Required for sending: HTTPS REST endpoint of your Upstash Redis database. |
 | `UPSTASH_REDIS_REST_TOKEN` | Required: standard Redis REST token with scripting/write permission. |
 | `CONTACT_DAILY_LIMIT` | Optional positive integer; defaults to 25 accepted requests per 24-hour window across every instance and IP. |
@@ -57,9 +57,19 @@ runtime. Redeploy after changing hosted variables. See
 | `GITHUB_OFFLINE` | Set to `1` to skip GitHub requests for an offline build. |
 
 Create a database in the [Upstash console](https://console.upstash.com/) and
-copy its REST URL and standard token. Use a sender from your verified domain
-or the trial sender shown by [MailerSend](https://www.mailersend.com/).
-An arbitrary Gmail address is not a verified sender just because it is yours.
+copy its REST URL and standard token. In [Resend](https://resend.com/domains),
+add your existing domain and publish the DNS records shown for sending, then
+wait for verification. Set `RESEND_FROM` to an address on that domain, such as
+`contact@globalriq.eu.org`, and `RESEND_TO` to your receiving inbox.
+An arbitrary Gmail address cannot be used as the sender. Keep the visitor's
+address as Reply-To. Domain verification in a previous provider does not carry
+over to Resend; add Resend's records alongside existing records as directed by
+the dashboard, preserving the DNS records used by other services.
+
+Resend's [free plan](https://resend.com/pricing) currently includes 3 custom
+sending domains, 3,000 emails per month and a 100-email daily limit. You bring
+a domain you already own; domain registration is not included. The form's
+default daily quota of 25 remains below the provider's daily allowance.
 
 The contact function accepts only JSON POSTs, validates fields before contacting
 external services, checks a honeypot, and sends plain text with the visitor as
@@ -67,8 +77,9 @@ Reply-To. Vercel's parsed `req.body`, raw Node streams and Netlify's Web Request
 streams are supported by the hosting adapters and shared contact service.
 Requests have a 24 KB body ceiling, a 2-second raw-body wait, a 2-second Redis
 timeout and a 6-second provider timeout. The browser stops waiting after 12 seconds.
-Only a MailerSend queued response with a message ID counts as accepted;
-acceptance is not a delivery receipt. Suppressed or paused sends return failure.
+Only a Resend HTTP 200 response with a nonempty email ID counts as accepted;
+acceptance is not a delivery receipt. Invalid or missing acknowledgements return
+failure so the visitor keeps their draft.
 
 ## Sending limits and operations
 
@@ -85,12 +96,41 @@ direct email available. Origin checks limit browser misuse; direct scripts
 without an Origin still pass through the same shared quota. Requests accepted
 by the limiter consume quota even if the mail provider later fails.
 
-Function logs on either host contain only outcome events and provider status codes:
+Function logs on either host contain only outcome events, provider status codes
+and allowlisted Resend error names (for example, `validation_error`):
 `accepted`, `throttled`, `configuration_missing`, `limiter_unavailable`,
-`provider_rejected`, `provider_unreachable`. Inspect counts and failures there,
-and delivery status, suppression and sending volume in the MailerSend dashboard.
+`provider_authorization_failed`, `provider_throttled`, `provider_rejected`,
+`provider_unreachable`. Inspect counts and failures there, and delivery status,
+suppression and sending volume in the Resend dashboard.
 Set provider usage alerts/limits to your own budget. Message bodies, sender
 addresses and tokens are never logged by this handler.
+
+### Resend setup and migration
+
+1. Verify your sending domain in [Resend Domains](https://resend.com/domains).
+2. Create a key with Sending access in [Resend API Keys](https://resend.com/api-keys).
+3. Set `RESEND_API_KEY`, `RESEND_FROM`, `RESEND_TO` and optionally
+   `RESEND_FROM_NAME` in local `.env` and in the hosting project's function
+   environment. The From/To addresses and display name can be copied from the
+   previous provider; the API key must be issued by Resend. Old `MAILERSEND_*`
+   variables are no longer read and can be removed after migration.
+4. Keep the existing Upstash configuration and `CONTACT_DAILY_LIMIT`. The Redis
+   quota namespace stays the same when the recipient and Redis token stay the same.
+5. Run `npm run contact:doctor`, then deploy the updated function with the new
+   environment variables. On Netlify, use the Functions scope and redeploy.
+
+The doctor reads `.env` when present and submits an empty provider payload that
+cannot send email. The expected 422 missing-fields response confirms the API key
+is accepted by the sending endpoint. This works with a Sending-only key, does
+not use Redis or consume the contact quota, and never prints the key or raw
+provider response. It does not verify domain ownership or delivery; confirm the
+domain is verified in the dashboard separately.
+
+Provider 401/403 responses return 503 from `/api/contact`; check the key's Sending
+permission and domain restriction, sender-domain verification, or an account
+restriction. Provider rate/quota failures return 429 and a valid retry delay when
+available. Other unconfirmed responses return 502. Visitors keep their draft and
+can use the email-app action. See [Resend's error reference](https://resend.com/docs/api-reference/errors).
 
 ## Content and repository snapshots
 
@@ -163,7 +203,7 @@ catch-all redirect is needed. See
 [Netlify's static SvelteKit setup](https://docs.netlify.com/build/frameworks/framework-setup-guides/sveltekit/)
 and [function routing](https://docs.netlify.com/build/functions/configuration/).
 
-Before enabling real sending, set the MailerSend and Upstash variables listed
+Before enabling real sending, set the Resend and Upstash variables listed
 above in the hosting project. Leave `ALLOWED_ORIGIN` blank for same-host checks
 on preview URLs, or set it to the production origin in the production context
 only. Deploy through Git or the Netlify CLI so the function is bundled with the
