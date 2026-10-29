@@ -20,6 +20,7 @@ export interface Project {
 	stack: string[];
 	href?: string;
 	repo?: string;
+	caseStudy?: string;
 	/** which 1-bit icon the card wears */
 	icon: 'code' | 'mail' | 'monitor' | 'film' | 'camera' | 'terminal' | 'folder' | 'prism';
 	/** GitHub stars — only rendered when present */
@@ -124,6 +125,7 @@ export const accounts = [
 export const featured: Project[] = [
 	{
 		slug: 'prediksiprofesi',
+		caseStudy: '/work/prediksiprofesi/',
 		name: 'PrediksiProfesi',
 		kind: 'research',
 		year: '2025',
@@ -136,6 +138,7 @@ export const featured: Project[] = [
 	},
 	{
 		slug: 'decklify',
+		caseStudy: '/work/decklify/',
 		name: 'Decklify',
 		kind: 'product',
 		year: '2026',
@@ -148,6 +151,7 @@ export const featured: Project[] = [
 	},
 	{
 		slug: 'manga-translator',
+		caseStudy: '/work/manga-translator/',
 		name: 'Manga Translator & OCR',
 		kind: 'project',
 		year: '2025',

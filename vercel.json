@@ -6,7 +6,7 @@
 	"cleanUrls": false,
 	"functions": {
 		"api/contact.ts": {
-			"maxDuration": 10
+			"maxDuration": 15
 		}
 	}
 }

@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:full": "tsc -p tsconfig.api.json --noEmit false --outDir .local-api --rootDir . && node --env-file=.env scripts/dev-full.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check:web": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:api": "tsc -p tsconfig.api.json",
+    "check": "npm run check:web && npm run check:api",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/*.test.js",
+    "test:preview": "node scripts/preview-smoke.mjs",
+    "verify": "npm run check && npm test && npm run build"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.8",
@@ -22,7 +28,6 @@
   "dependencies": {
     "@fontsource-variable/pixelify-sans": "^5.2.8",
     "@fontsource/atkinson-hyperlegible": "^5.2.8",
-    "@fontsource/dotgothic16": "^5.2.8",
     "@fontsource/vt323": "^5.2.8"
   }
 }

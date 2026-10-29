@@ -7,11 +7,6 @@
 	import FileCard from '$lib/components/FileCard.svelte';
 </script>
 
-<svelte:head>
-	<meta property="og:title" content="Mikail Thoriq" />
-	<meta property="og:description" content={copy.heroLead} />
-</svelte:head>
-
 <Hero />
 
 <section class="section" id="about">
@@ -46,18 +41,18 @@
 		<Window title="Work — Finder">
 			{#snippet children()}
 				<p class="finder-info">
-					<span>{projects.length} items</span>
+					<span>{projects.length} featured projects</span>
 					<span>selected projects</span>
 				</p>
 
-				<div class="finder-grid">
+				<div class="finder-grid featured-grid">
 					{#each projects as project (project.slug)}
 						<FileCard {project} />
 					{/each}
 				</div>
 
 				<p class="finder-status">
-					<span class="finder-status-label">● {projects.length} of {projects.length} selected</span>
+					<span class="finder-status-label">Case studies, source and project links</span>
 				</p>
 			{/snippet}
 		</Window>

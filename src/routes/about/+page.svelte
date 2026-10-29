@@ -16,14 +16,10 @@
 
 <svelte:head>
 	<title>About — Mikail Thoriq</title>
-	<meta
-		name="description"
-		content="AI/ML engineer, backend and full-stack developer based in Depok, Indonesia."
-	/>
 </svelte:head>
 
 <section class="section">
-	<SectionHead kicker={sections.about.kicker} title={sections.about.title} sub={sections.about.sub} />
+	<SectionHead level={1} kicker={sections.about.kicker} title={sections.about.title} sub={sections.about.sub} />
 
 	<div use:zoom>
 		<Window title="About — {identity.name}">

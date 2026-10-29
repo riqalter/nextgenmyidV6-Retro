@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { motion } from '$lib/motion.svelte';
 	import { theme } from '$lib/theme.svelte';
@@ -13,7 +14,6 @@
 	let { name, items }: Props = $props();
 
 	let clock = $state('');
-	let open = $state(false);
 	let menuOpen = $state(false);
 	let pull: HTMLButtonElement | undefined = $state();
 
@@ -33,9 +33,12 @@
 		return () => clearInterval(id);
 	});
 
-	function setOpen(next: boolean) {
+	async function setOpen(next: boolean) {
 		menuOpen = next;
-		if (next) items.length && document.getElementById('menubar-menu')?.querySelector('a')?.focus();
+		if (next) {
+			await tick();
+			document.getElementById('menubar-menu')?.querySelector('a')?.focus();
+		}
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -94,11 +97,12 @@
 		<button
 			type="button"
 			class="motion-toggle"
+			title={motion.current === 'on' ? 'Turn animations off' : 'Turn animations on'}
 			aria-pressed={motion.current === 'on'}
 			onclick={() => motion.toggle()}
 		>
 			<span class="motion-toggle-box" class:checked={motion.current === 'on'} aria-hidden="true"></span>
-			<span class="sr-only">Motion</span>
+			<span class="motion-label">Motion</span>
 		</button>
 
 		<button
@@ -218,6 +222,7 @@
 
 	/* a literal System 1 checkbox: an X drawn from two gradients */
 	.motion-toggle {
+		gap: 0.4rem;
 		display: flex;
 		align-items: center;
 		padding: 0 0.7rem;

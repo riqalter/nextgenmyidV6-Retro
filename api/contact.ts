@@ -1,206 +1,139 @@
-/**
- * Contact form → MailerSend.
- *
- * Why this is a function and not a fetch from the browser: the site is a static
- * build, and a fetch from client-side JavaScript would put the MailerSend API
- * token in the shipped bundle, where anyone could read it and send mail as you.
- * The token lives in Vercel's environment instead and never leaves the server.
- *
- * Setup (Vercel dashboard → Project → Settings → Environment Variables):
- *   MAILERSEND_API_TOKEN   required — MailerSend → Settings → API tokens
- *   MAILERSEND_TO          required — where the message should land
- *   MAILERSEND_FROM        optional — must be a verified sender in MailerSend
- *   MAILERSEND_FROM_NAME   optional — display name, defaults to the site name
- *   ALLOWED_ORIGIN         optional — defaults to the Vercel URL of this deploy
- *
- * All five are server-only. Nothing here is prefixed PUBLIC_, so Vercel will
- * not inline any of them into the client bundle.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { isIP } from 'node:net';
+import { validateContact } from '../src/lib/contact.js';
+import { checkContactLimit } from '../src/lib/server/contact-rate-limit.js';
 
-const API = 'https://api.mailersend.com/v1/email';
+type ContactRequest = IncomingMessage & { body?: unknown };
+const MAX_BODY = 24_000;
+class BodyError extends Error {
+	constructor(public status: number) { super('invalid_body'); }
+}
 
-/** MailerSend's documented per-request ceiling is 50 KB; stay well under. */
-const MAX_BODY = 20_000;
-
-const LIMITS = { name: 120, email: 254, message: 5000 } as const;
-
-/**
- * Per-instance rate limit. A serverless instance is short-lived and not shared,
- * so this is a speed bump against a single spam script, not a quota — real
- * protection is the honeypot plus MailerSend's own rate limiting behind us.
- */
-const HITS = new Map<string, { count: number; until: number }>();
-const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 5;
-
-function rateLimited(ip: string): boolean {
-	const now = Date.now();
-	const hit = HITS.get(ip);
-
-	if (!hit || hit.until < now) {
-		HITS.set(ip, { count: 1, until: now + WINDOW_MS });
-		return false;
+/** Use Vercel's parsed body helper; support raw Node requests for local tooling. */
+async function readBody(req: ContactRequest, timeoutMs: number): Promise<unknown> {
+	if (Number(req.headers['content-length']) > MAX_BODY) throw new BodyError(413);
+	if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') throw new BodyError(415);
+	const body = req.body; // The Vercel getter can throw on invalid JSON.
+	if (body !== undefined) {
+		const raw = typeof body === 'string' || Buffer.isBuffer(body) ? body.toString() : JSON.stringify(body);
+		if (Buffer.byteLength(raw) > MAX_BODY) throw new BodyError(413);
+		return JSON.parse(raw);
 	}
-
-	hit.count += 1;
-	return hit.count > MAX_PER_WINDOW;
-}
-
-function clientIp(req: IncomingMessage): string {
-	const fwd = req.headers['x-forwarded-for'];
-	return (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0].trim() || 'unknown';
-}
-
-/** Only the site's own pages may post. Stops drive-by use of your quota. */
-function originAllowed(req: IncomingMessage): boolean {
-	const origin = req.headers.origin;
-	if (!origin) return true; // same-origin form posts and curl send no Origin
-
-	const allowed = process.env.ALLOWED_ORIGIN;
-	if (allowed) return origin === allowed;
-
-	// Fall back to "same host", which is right for a Vercel deploy where the
-	// function and the static site share a hostname.
-	const host = req.headers.host;
-	return Boolean(host) && origin.endsWith(`//${host}`);
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		let raw = '';
-		req.on('data', (chunk) => {
-			raw += chunk;
-			if (raw.length > MAX_BODY) {
-				reject(new Error('body too large'));
-				req.destroy();
-			}
-		});
-		req.on('end', () => resolve(raw));
-		req.on('error', reject);
+	const raw = await new Promise<string>((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let bytes = 0;
+		const timer = setTimeout(() => finish(new BodyError(408)), timeoutMs);
+		const cleanup = () => {
+			clearTimeout(timer);
+			req.off('data', onData); req.off('end', onEnd); req.off('error', onError); req.off('aborted', onAbort);
+		};
+		const finish = (error?: Error) => {
+			cleanup();
+			if (error) { req.resume(); reject(error); }
+			else resolve(Buffer.concat(chunks).toString('utf8'));
+		};
+		const onData = (chunk: Buffer | string) => {
+			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+			bytes += buffer.length;
+			if (bytes > MAX_BODY) finish(new BodyError(413));
+			else chunks.push(buffer);
+		};
+		const onEnd = () => finish();
+		const onError = (error: Error) => finish(error);
+		const onAbort = () => finish(new BodyError(400));
+		req.on('data', onData).once('end', onEnd).once('error', onError).once('aborted', onAbort);
 	});
+	return JSON.parse(raw);
 }
 
-/**
- * Deliberately permissive: the goal is to catch typos, not to police RFC 5322.
- * MailerSend rejects anything genuinely undeliverable on its own.
- */
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-function validate(input: unknown): Record<string, string> | null {
-	if (typeof input !== 'object' || input === null) return null;
-	const body = input as Record<string, unknown>;
-
-	const name = typeof body.name === 'string' ? body.name.trim() : '';
-	const email = typeof body.email === 'string' ? body.email.trim() : '';
-	const message = typeof body.message === 'string' ? body.message.trim() : '';
-
-	if (!name || !email || !message) return null;
-	if (name.length > LIMITS.name) return null;
-	if (email.length > LIMITS.email || !EMAIL.test(email)) return null;
-	if (message.length > LIMITS.message) return null;
-
-	return { name, email, message };
-}
-
-/**
- * Test-only hook: clears the per-instance rate-limit state.
- *
- * Vercel builds one module per instance and this Map is module state, so in
- * production there is nothing to reset — this exists so the branches above can
- * be exercised without one test starving the next.
- */
-export function __resetRateLimit(): void {
-	HITS.clear();
-}
-
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
-	// Every failure below returns the same shape: a status, a short sentence,
-	// and never anything that reveals the token, the sender, or the provider.
-	const fail = (status: number, message: string) => {
-		res.statusCode = status;
-		res.setHeader('Content-Type', 'application/json');
-		res.end(JSON.stringify({ error: message }));
-	};
-
-	if (req.method !== 'POST') {
-		res.setHeader('Allow', 'POST');
-		return fail(405, 'Method not allowed.');
-	}
-
-	if (!originAllowed(req)) return fail(403, 'Not allowed.');
-
-	if (rateLimited(clientIp(req))) {
-		return fail(429, 'Too many messages. Try again in a minute.');
-	}
-
-	let parsed: unknown;
+function originAllowed(req: ContactRequest, env: NodeJS.ProcessEnv): boolean {
+	if (!req.headers.origin) return true; // Direct requests still pass the shared quota.
 	try {
-		parsed = JSON.parse(await readBody(req));
-	} catch {
-		return fail(400, 'Could not read that message.');
-	}
+		const origin = new URL(req.headers.origin);
+		if (origin.origin !== req.headers.origin) return false;
+		return env.ALLOWED_ORIGIN ? origin.origin === env.ALLOWED_ORIGIN
+			: origin.host === req.headers.host && ['https:', ...(env.VERCEL ? [] : ['http:'])].includes(origin.protocol);
+	} catch { return false; }
+}
 
-	// Honeypot, checked before anything that could leak state: a real visitor
-	// never fills a field they cannot see. Answer 200 either way, so a bot
-	// learns nothing from the response — not even whether the form is set up.
-	if (typeof parsed === 'object' && parsed !== null && (parsed as { website?: string }).website) {
-		return fail(200, 'Thanks.');
-	}
+function clientIp(req: ContactRequest, env: NodeJS.ProcessEnv): string | null {
+	// Vercel overwrites this header at its edge. Never trust forwarded IPs locally.
+	const header = req.headers['x-vercel-forwarded-for'];
+	const ip = env.VERCEL ? (Array.isArray(header) ? header[0] : header)?.split(',')[0].trim() : req.socket.remoteAddress;
+	return ip && isIP(ip) ? ip : null;
+}
 
-	// A hung upstream must not hold the invocation open until Vercel kills it.
-	const upstream = AbortSignal.timeout(8000);
+interface Dependencies {
+	env?: NodeJS.ProcessEnv;
+	transport?: typeof fetch;
+	providerTimeoutMs?: number;
+	bodyTimeoutMs?: number;
+	log?: (event: string, status?: number) => void;
+}
 
-	const token = process.env.MAILERSEND_API_TOKEN;
-	const to = process.env.MAILERSEND_TO;
-	const from = process.env.MAILERSEND_FROM || to;
-
-	if (!token || !to || !from) {
-		console.error('contact: MAILERSEND_API_TOKEN / MAILERSEND_TO / MAILERSEND_FROM missing');
-		return fail(500, 'The form is not configured yet.');
-	}
-
-	const fields = validate(parsed);
-	if (!fields) return fail(400, 'Please check every field and try again.');
-
-	const { name, email, message } = fields;
-	const fromName = process.env.MAILERSEND_FROM_NAME || 'Personal site contact form';
-
-	try {
-		const res_ = await fetch(API, {
-			method: 'POST',
-			signal: upstream,
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json',
-				'X-Requested-With': 'XMLHttpRequest'
-			},
-			body: JSON.stringify({
-				from: { email: from, name: fromName },
-				to: [{ email: to }],
-				// Reply-To is the visitor, not you: hitting reply in your inbox
-				// goes straight back to them.
-				reply_to: { email, name },
-				subject: `Contact form — ${name}`,
-				// Plain text on purpose. There is no HTML part, so a name or a
-				// message containing markup cannot become live HTML in your
-				// inbox — nothing to escape, nothing to sanitise later.
-				text: message
-			})
-		});
-
-		if (!res_.ok) {
-			// Log the detail, return none of it.
-			console.error('contact: MailerSend', res_.status, (await res_.text()).slice(0, 500));
-			return fail(502, 'Could not send that. Please email me directly.');
+/** Dependency injection keeps tests offline, without real credentials or emails. */
+export function createContactHandler({
+	env = process.env, transport = fetch, providerTimeoutMs = 6000, bodyTimeoutMs = 2000,
+	log = (event, status) => console.info(JSON.stringify({ component: 'contact', event, status }))
+}: Dependencies = {}) {
+	return async (req: ContactRequest, res: ServerResponse) => {
+		const respond = (status: number, data: object) => {
+			res.statusCode = status;
+			res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store');
+			res.end(JSON.stringify(data));
+		};
+		if (req.method !== 'POST') {
+			res.setHeader('Allow', 'POST');
+			return respond(405, { error: 'Method not allowed.' });
 		}
-	} catch (e) {
-		console.error('contact: MailerSend unreachable', e);
-		return fail(502, 'Could not send that. Please email me directly.');
-	}
-
-	res.statusCode = 200;
-	res.setHeader('Content-Type', 'application/json');
-	res.end(JSON.stringify({ ok: true }));
+		if (!originAllowed(req, env)) return respond(403, { error: 'Not allowed.' });
+		let parsed: unknown;
+		try { parsed = await readBody(req, bodyTimeoutMs); }
+		catch (error) { return respond(error instanceof BodyError ? error.status : 400, { error: 'Could not read that message.' }); }
+		if (parsed && typeof parsed === 'object' && (parsed as { website?: unknown }).website) {
+			return respond(200, { ok: true }); // Honeypot: no provider, limiter or config lookup.
+		}
+		const { fields, errors } = validateContact(parsed);
+		if (Object.keys(errors).length) return respond(400, { error: 'Please check your details.', fields: errors });
+		const { MAILERSEND_API_TOKEN: token, MAILERSEND_TO: to, MAILERSEND_FROM: from } = env;
+		if (!token || !to || !from) {
+			log('configuration_missing');
+			return respond(503, { error: 'The contact service is unavailable.' });
+		}
+		const ip = clientIp(req, env);
+		if (!ip) return respond(503, { error: 'The contact service is unavailable.' });
+		try {
+			const limit = await checkContactLimit(ip, env, transport);
+			if (!limit.allowed) {
+				log('throttled'); res.setHeader('Retry-After', limit.retryAfter);
+				return respond(429, { error: 'Sending limit reached. Please try later or email directly.' });
+			}
+		} catch {
+			log('limiter_unavailable');
+			return respond(503, { error: 'The contact service is unavailable.' });
+		}
+		try {
+			const response = await transport('https://api.mailersend.com/v1/email', {
+				method: 'POST', signal: AbortSignal.timeout(providerTimeoutMs),
+				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					from: { email: from, name: env.MAILERSEND_FROM_NAME || 'Personal site contact form' },
+					to: [{ email: to }], reply_to: { email: fields.email, name: fields.name },
+					subject: `Contact form — ${fields.name}`, text: fields.message
+				})
+			});
+			// Queuing is asynchronous. Suppressed/paused requests must not clear a draft.
+			if (response.status !== 202 || !response.headers.get('x-message-id') || response.headers.get('x-send-paused') === 'true') {
+				log('provider_rejected', response.status);
+				return respond(502, { error: 'Sending could not be confirmed. Please email directly.' });
+			}
+		} catch {
+			log('provider_unreachable');
+			return respond(502, { error: 'Sending could not be confirmed. Please email directly.' });
+		}
+		log('accepted');
+		return respond(200, { ok: true });
+	};
 }
+
+export default createContactHandler();

@@ -26,7 +26,6 @@
 	--font-ui: 'Pixelify Sans Variable', 'Pixelify Sans', 'VT323', ui-monospace, monospace;
 	--font-body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-mono: 'VT323', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-	--font-ja: 'DotGothic16', 'Hiragino Sans', 'Yu Gothic', sans-serif;
 
 	/* --- structure ------------------------------------------------------- */
 	--line: 2px;
@@ -414,7 +413,9 @@ a:hover {
 
 /* :user-invalid, never :invalid — a pristine form is never red */
 .field input:user-invalid,
-.field textarea:user-invalid {
+.field textarea:user-invalid,
+.field input[aria-invalid='true'],
+.field textarea[aria-invalid='true'] {
 	border-color: var(--red);
 	border-style: dashed;
 }
@@ -482,6 +483,13 @@ html.js[data-motion='on'] [data-zoom]:not(.is-open) {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
 	gap: 0.5rem;
+}
+
+.featured-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 760px) {
+	.featured-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* the 1px groove between content and the bar below it */

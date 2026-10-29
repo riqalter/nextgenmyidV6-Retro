@@ -5,14 +5,14 @@
 		title: string;
 		sub?: string;
 		id?: string;
+		level?: 1 | 2;
 	}
 
-	let { kicker, title, sub = '', id }: Props = $props();
+	let { kicker, title, sub = '', id, level = 2 }: Props = $props();
 </script>
 
 <header class="section-head">
-	<p class="section-kicker">{kicker}</p>
-	<h2 class="section-title" {id}>{title}</h2>
+	<svelte:element this={level === 1 ? 'h1' : 'h2'} class="section-title" {id}>{title}</svelte:element>
 	{#if sub}
 		<p class="section-sub">{sub}</p>
 	{/if}

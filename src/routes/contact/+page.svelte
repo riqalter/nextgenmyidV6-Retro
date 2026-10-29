@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { zoom } from '$lib/actions/zoom';
 	import { copy, identity, links, sections } from '$lib/content';
+	import { contactFieldNames, contactLimits, emailDraft, submitContact, validateContact, type FieldErrors } from '$lib/contact';
 	import SectionHead from '$lib/components/SectionHead.svelte';
 	import Window from '$lib/components/Window.svelte';
 
@@ -13,60 +15,41 @@
 	let status = $state('');
 	let failed = $state(false);
 	let sending = $state(false);
+	let errors: FieldErrors = $state({});
+	const draftHref = $derived(emailDraft(identity.email, { name, email, message }));
 
 	const senders: { label: string; href: string }[] = [
 		{ label: identity.email, href: `mailto:${identity.email}` }
 	];
 
+	async function focusError() {
+		await tick();
+		const first = contactFieldNames.find((field) => errors[field]);
+		if (first) document.getElementById(first)?.focus();
+	}
+
 	async function send(e: SubmitEvent) {
 		e.preventDefault();
-		failed = false;
-
 		if (sending) return;
-
-		if (!name.trim() || !email.trim() || !message.trim()) {
+		failed = false;
+		const validation = validateContact({ name, email, message });
+		errors = validation.errors;
+		if (Object.keys(errors).length) {
 			failed = true;
-			status = 'All three fields are required.';
+			status = 'Please correct the fields marked below.';
+			await focusError();
 			return;
 		}
-
 		sending = true;
 		status = 'Sending…';
-
-		try {
-			const res = await fetch('/api/contact', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: name.trim(),
-					email: email.trim(),
-					message: message.trim(),
-					website
-				})
-			});
-
-			const data = (await res.json().catch(() => ({}))) as { error?: string };
-
-			if (res.ok) {
-				status = 'Sent. I will get back to you.';
-				name = email = message = '';
-				return;
-			}
-
-			// 429 and 5xx are our problem, not theirs — offer the way out.
-			failed = true;
-			status = `${data.error ?? 'Something went wrong.'} You can also email me directly.`;
-		} catch {
-			// The function is not deployed (a plain `vite dev` has no /api).
-			// Falling back to the mail client keeps the page useful either way.
-			const subject = encodeURIComponent(`Portfolio enquiry from ${name.trim()}`);
-			const body = encodeURIComponent(
-				`${message.trim()}\n\n— ${name.trim()} (${email.trim()})`
-			);
-			status = 'Opening your mail client…';
-			window.location.href = `mailto:${identity.email}?subject=${subject}&body=${body}`;
-		} finally {
-			sending = false;
+		const result = await submitContact({ ...validation.fields, website });
+		sending = false;
+		status = result.message;
+		failed = !result.ok;
+		if (result.ok) name = email = message = website = '';
+		else if (result.errors) {
+			errors = result.errors;
+			await focusError();
 		}
 	}
 </script>
@@ -77,6 +60,7 @@
 
 <section class="section">
 	<SectionHead
+		level={1}
 		kicker={sections.contact.kicker}
 		title={sections.contact.title}
 		sub={sections.contact.sub}
@@ -85,7 +69,8 @@
 	<div use:zoom>
 		<Window title="Contact — new message" dialog>
 			{#snippet children()}
-				<form class="contact-form" onsubmit={send} novalidate>
+				<form class="contact-form" method="post" action="/api/contact" onsubmit={send} novalidate aria-busy={sending}>
+					<p>All fields are required. Your message stays here if sending fails.</p>
 					<div class="field">
 						<label for="name">Name <span aria-hidden="true">*</span></label>
 						<input
@@ -93,11 +78,15 @@
 							name="name"
 							type="text"
 							bind:value={name}
+							readonly={sending}
+							aria-invalid={Boolean(errors.name)}
+							aria-describedby={errors.name ? 'name-error' : undefined}
 							required
 							autocomplete="name"
-							maxlength="120"
+							maxlength={contactLimits.name}
 							placeholder="Your name"
 						/>
+						{#if errors.name}<p class="field-error" id="name-error">{errors.name}</p>{/if}
 					</div>
 
 					<div class="field">
@@ -107,11 +96,15 @@
 							name="email"
 							type="email"
 							bind:value={email}
+							readonly={sending}
+							aria-invalid={Boolean(errors.email)}
+							aria-describedby={errors.email ? 'email-error' : undefined}
 							required
 							autocomplete="email"
-							maxlength="254"
+							maxlength={contactLimits.email}
 							placeholder="you@example.com"
 						/>
+						{#if errors.email}<p class="field-error" id="email-error">{errors.email}</p>{/if}
 					</div>
 
 					<div class="field">
@@ -121,13 +114,16 @@
 							name="message"
 							rows="6"
 							bind:value={message}
+							readonly={sending}
+							aria-invalid={Boolean(errors.message)}
+							aria-describedby={errors.message ? 'message-error' : undefined}
 							required
-							maxlength="5000"
+							maxlength={contactLimits.message}
 						></textarea>
+						{#if errors.message}<p class="field-error" id="message-error">{errors.message}</p>{/if}
 					</div>
 
-					<!-- honeypot: off-screen, not display:none, not aria-hidden,
-					     and tabindex -1 so no keyboard user can ever reach it -->
+					<!-- Off-screen honeypot, excluded from assistive technology and tab order. -->
 					<div class="trap" aria-hidden="true">
 						<label for="website">Website</label>
 						<input
@@ -140,7 +136,7 @@
 						/>
 					</div>
 
-					<button type="submit" class="btn btn--default" disabled={sending}>
+					<button type="submit" class="btn btn--default" aria-disabled={sending}>
 						{sending ? 'Sending…' : 'Send'}
 					</button>
 
@@ -152,6 +148,11 @@
 					>
 						{status}
 					</p>
+					{#if failed}
+						<a class="btn email-fallback" href={draftHref}>Open email app with this message</a>
+						<p class="fallback-hint">Your email app will open a draft. Review it there, then send.</p>
+					{/if}
+					<noscript><p>To send a message, email <a href="mailto:{identity.email}">{identity.email}</a>.</p></noscript>
 				</form>
 			{/snippet}
 		</Window>
@@ -188,6 +189,9 @@
 	.contact-form button {
 		justify-self: start;
 	}
+	.email-fallback { justify-self: start; }
+	.field-error { color: var(--red); font-size: 0.95rem; }
+	.fallback-hint { color: var(--muted); font-size: 0.95rem; }
 
 	/* The honeypot must stay reachable to the bots that fill it and invisible
 	   to everyone else. Off-screen rather than display:none, because a bot that

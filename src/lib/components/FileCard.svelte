@@ -4,11 +4,11 @@
 
 	let { project }: { project: Project } = $props();
 
-	const href = $derived(project.href ?? project.repo ?? '#');
-	const external = $derived(Boolean(project.href ?? project.repo));
+	const href = $derived(project.caseStudy ?? project.repo ?? project.href ?? '#');
+	const external = $derived(!project.caseStudy && Boolean(project.repo ?? project.href));
 </script>
 
-<article class="file">
+<article class="file" class:has-study={Boolean(project.caseStudy)}>
 	<a class="file-link" {href} target={external ? '_blank' : undefined} rel={external ? 'noopener' : undefined}>
 		<span
 			class="file-icon"
@@ -41,6 +41,13 @@
 			<li>{item}</li>
 		{/each}
 	</ul>
+	{#if project.caseStudy}
+		<div class="file-actions">
+			<a href={project.caseStudy}>Read case study</a>
+			{#if project.repo}<a href={project.repo} target="_blank" rel="noopener">View source</a>{/if}
+			{#if project.href}<a href={project.href} target="_blank" rel="noopener">Open product</a>{/if}
+		</div>
+	{/if}
 </article>
 
 <style>
@@ -72,14 +79,14 @@
 		-webkit-mask-repeat: no-repeat;
 	}
 
-	/* black stays black, white becomes black, red becomes cyan — one filter,
-	   no asset swap. */
+	/* Mask icons use theme inks directly, so hover remains visible in both themes. */
 	.file:hover .file-icon,
 	.file:focus-within .file-icon {
-		filter: invert(1) hue-rotate(180deg);
+		background: var(--red);
 	}
 
 	.file-name {
+		overflow-wrap: anywhere;
 		font-family: var(--font-ui);
 		font-weight: 500;
 		font-size: 1.15rem;
@@ -126,7 +133,7 @@
 	}
 
 	/* the whole card is the hit target */
-	.file-link::after {
+	.file:not(.has-study) .file-link::after {
 		content: '';
 		position: absolute;
 		inset: 0;
@@ -141,4 +148,8 @@
 	.file:focus-within .file-link {
 		outline: none;
 	}
+	.file.has-study:focus-within { outline: none; }
+	.file.has-study .file-link:focus-visible { outline: 3px solid var(--red); outline-offset: 4px; }
+	.file-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1rem; margin-top: 0.5rem; }
+	.file-actions a { position: relative; padding-block: 0.4rem; }
 </style>

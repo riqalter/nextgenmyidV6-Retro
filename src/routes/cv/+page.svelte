@@ -19,10 +19,6 @@
 
 <svelte:head>
 	<title>CV — Mikail Thoriq</title>
-	<meta
-		name="description"
-		content="The long version — CV of Mikail Thoriq Banowo, AI/ML engineer, backend and full-stack developer."
-	/>
 </svelte:head>
 
 <section class="section">
@@ -79,7 +75,7 @@
 					</div>
 				</section>
 
-				<section class="cv-block">
+				<section class="cv-block" id="experience">
 					<h2 class="cv-h">Professional Experience</h2>
 					{#each roles as role (role.title)}
 						<article class="cv-role">

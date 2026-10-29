@@ -1,288 +1,156 @@
 # Mikail Thoriq — personal site
 
-A 1-bit personal site built with **Svelte 5** + **SvelteKit** (static output).
+A 1-bit portfolio built with Svelte 5 and SvelteKit. Static pages and three
+engineering case studies sit inside a pixel desktop; a separate Vercel Node
+function handles contact email.
 
-The visual language is System 1: two inks, one rationed red, halftone instead of
-grey, and stepped motion everywhere. See `DESIGN_LANGUAGE.md`, `COLORSTYLE.md`
-and `HOWITSWORK.md` in the repo root for the full specification this implements.
+![Home](docs/screenshots/home.png)
 
----
+The visual specification lives in `DESIGN_LANGUAGE.md`, `COLORSTYLE.md` and
+`HOWITSWORK.md`. Preserve the warm paper, ink, single red, hard window borders,
+stepped animation, readable body font and coordinated dark theme. The screenshots
+in `docs/screenshots/` show the earlier version; regenerate them deliberately
+when updating the visual documentation.
 
-## Preview
+## Getting started
 
-<p align="center">
-  <img src="docs/screenshots/home.png" alt="Home — the hero, the menu bar, and the 1-bit swirl field" width="900">
-</p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/home-dark.png" alt="Home in dark mode" width="100%"></td>
-    <td width="50%"><img src="docs/screenshots/work.png" alt="Work — the Finder-style project window" width="100%"></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/about.png" alt="About" width="100%"></td>
-    <td><img src="docs/screenshots/cv.png" alt="CV" width="100%"></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/contact.png" alt="Contact" width="100%"></td>
-    <td></td>
-  </tr>
-</table>
-
-<p align="center"><sub>
-Captured from the production build at 1440&nbsp;px, rendered at
-<code>deviceScaleFactor: 2</code> — real 2× pixels, not an upscaled 1× grab.
-Regenerate with <code>node scripts/screenshot.mjs</code> while
-<code>npm run preview</code> is up.
-</sub></p>
-
----
-
-## Run it
+Use Node.js 22 or newer and npm.
 
 ```bash
-npm install
-npm run dev        # http://localhost:5173
-npm run check      # svelte-check — types + a11y + unused CSS
-npm run build      # static site → ./build
-npm run preview    # serve ./build
+npm ci
+cp .env.example .env
+# Fill .env as described below; the static preview needs no credentials.
+npm run dev           # frontend, http://localhost:5173
+npm run dev:full      # frontend + real local contact handler, reads .env
 ```
 
----
+`dev:full` compiles the same handler deployed to Vercel and mounts it in Vite.
+Restart it after API source or .env changes. `vercel dev` is another way to test
+the platform's request helpers. Plain `dev` and `preview` do not mount the API:
+the contact page offers an explicit email-app action after a failed request.
+It keeps the entered draft and never opens another app automatically.
 
-## The six rules
+## Environment configuration
 
-1. **1-bit, one red.** Two inks and a single accent. Warm paper, warm near-black
-   ink, and one crimson. There is no second accent hue.
-2. **No grey.** Where a tone is needed, a halftone screen is drawn —
-   `--pat-50` (50% checkerboard), `--pat-25` (25% dot screen), `--pat-rule`
-   (1px line every 3px). Never `#888`.
-3. **Red is rationed.** It marks *you are here*, *this is a control or state*, and
-   *the brand*. Never decoration, never a heading, never a resting button fill.
-4. **Everything steps.** There is not one `ease` in the stylesheet. A smooth
-   transition breaks the illusion the moment it appears.
-5. **Depth is drawn, never rendered.** `box-shadow: 4px 4px 0` — hard offset,
-   zero blur. Buttons are the only thing allowed a radius (12px / 9px);
-   inputs are square.
-6. **Light and dark are the same design, not two.** Ink and paper swap
-   *meaning*, so every existing inversion keeps working.
+All credentials remain server-side. `.env` is ignored; `.env.example` contains
+the complete template. Also set the relevant variables in the Vercel project
+for each deployment environment; local .env values are not uploaded for you.
 
----
+| Variable | Use |
+| --- | --- |
+| `GITHUB_TOKEN` | Optional read-only public GitHub access for build-time fetching. `GH_TOKEN` is also recognised. |
+| `MAILERSEND_API_TOKEN` | Required for the contact form: MailerSend token with email sending permission. |
+| `MAILERSEND_TO` | Required: the inbox receiving contact messages. |
+| `MAILERSEND_FROM` | Required: a verified MailerSend sender. It may differ from the recipient. |
+| `MAILERSEND_FROM_NAME` | Optional sender display name. |
+| `UPSTASH_REDIS_REST_URL` | Required for sending: HTTPS REST endpoint of your Upstash Redis database. |
+| `UPSTASH_REDIS_REST_TOKEN` | Required: standard Redis REST token with scripting/write permission. |
+| `CONTACT_DAILY_LIMIT` | Optional positive integer; defaults to 25 accepted requests per 24-hour window across every instance and IP. |
+| `ALLOWED_ORIGIN` | Optional exact origin without a trailing slash. Blank uses same-host validation; set the production origin in the production environment only. |
+| `GITHUB_OFFLINE` | Set to `1` to skip GitHub requests for an offline build. |
 
-## Light / dark
+Create a database in the [Upstash console](https://console.upstash.com/) and
+copy its REST URL and standard token. Use a sender from your verified domain
+or the trial sender shown by [MailerSend](https://www.mailersend.com/).
+An arbitrary Gmail address is not a verified sender just because it is yours.
 
-Light is **warm paper**: cream stock, warm near-black ink, one crimson. Dark is
-the same design on a dark surface. The toggle lives in the menu bar next to the
-motion switch. It defaults to your OS preference, remembers your choice, and
-follows the OS again only while you haven't expressed one. It resolves inline in
-`app.html` before first paint, so there is no white flash on a dark-preferring
-display.
+The contact function accepts only JSON POSTs, validates fields before contacting
+external services, checks a honeypot, and sends plain text with the visitor as
+Reply-To. Vercel's parsed `req.body` and raw Node streams are both supported.
+Requests have a 24 KB body ceiling, a 2-second raw-body wait, a 2-second Redis
+timeout and a 6-second provider timeout. The browser stops waiting after 12 seconds.
+Only a MailerSend queued response with a message ID counts as accepted;
+acceptance is not a delivery receipt. Suppressed or paused sends return failure.
 
-### The palette
+## Sending limits and operations
 
-| | Light (warm) | Dark | |
-|---|---|---|---|
-| paper | `#f5f2ea` | `#141414` | pure `#000` smears on OLED scroll; pure `#fff` glares under long reading |
-| ink | `#1c1a17` | `#dedede` | warm near-black; pure `#000` on cream reads harsh |
-| red | `#c8102e` | `#ff3d3d` | **re-derived per surface, not carried over** |
-| muted | `#55514a` | `#9e9e9e` | |
-| placeholder | `#6e6a62` | `#8c8c8c` | |
-| body contrast | 15.5:1 | 13.7:1 | above AAA (7:1), well short of the 21:1 that fatigues |
+An atomic Redis script allows 5 requests per IP per minute, plus the shared
+daily quota. Keys expire and contain keyed digests instead of raw IPs. On
+Vercel, the function uses its edge-provided `x-vercel-forwarded-for` header;
+local development uses the socket address. Deploying this handler behind a
+different proxy requires reviewing that trust boundary.
 
-### Why the red had to be re-derived twice
+Missing configuration or an unavailable limiter disables sending and leaves
+direct email available. Origin checks limit browser misuse; direct scripts
+without an Origin still pass through the same shared quota. Requests accepted
+by the limiter consume quota even if the mail provider later fails.
 
-The cold `#E00000` is tuned so its max channel is 224 rather than 255, precisely
-so it clears 4.5:1 on white. That tuning is ground-specific:
+Vercel function logs contain only outcome events and provider status codes:
+`accepted`, `throttled`, `configuration_missing`, `limiter_unavailable`,
+`provider_rejected`, `provider_unreachable`. Inspect counts and failures there,
+and delivery status, suppression and sending volume in the MailerSend dashboard.
+Set provider usage alerts/limits to your own budget. Message bodies, sender
+addresses and tokens are never logged by this handler.
 
-| Red | ground | ratio | verdict |
-|---|---|---|---|
-| `#e00000` | `#ffffff` | 5.04:1 | the original's tuning |
-| `#e00000` | `#141414` | **4.17:1** | **fails AA** |
-| `#e00000` | `#f5f2ea` | **4.50:1** | passes with *zero* margin — any deeper stock breaks it |
-| `#c8102e` | `#f5f2ea` | 5.26:1 | the warm ground's red |
-| `#ff3d3d` | `#141414` | 5.25:1 | the dark ground's red |
+## Content and repository snapshots
 
-A naive "invert the tokens" dark mode would have shipped a red that fails WCAG,
-and a naive "just swap the paper" warm mode would have left it one shade away
-from failing. Both are silent failures — nothing renders wrong, it just becomes
-unreadable for the people who need it most.
+`src/lib/content.ts` holds the CV, identity, featured projects and account list.
+`src/lib/case-studies.ts` contains the three stories, grounded in that CV and
+linked project artifacts. Edit these when responsibilities or outcomes change;
+do not invent metrics. Generated archive descriptions identify the language and
+owner when the upstream repository has no description.
 
-### Two other traps this design sets
+The Work page leads with the case studies. Its optional archive includes up to
+18 non-fork, non-archived repositories per account from the first 100 API results,
+excluding featured projects, ordered by last push. Full archives remain linked
+on GitHub. This is a recent subset, not a paginated inventory of every repository.
 
-- **The halftones vanish.** `--pat-50` / `--pat-25` are data URIs, so they can't
-  read a variable; each theme carries its own screens with that theme's ink.
-  A pure-black screen on cream stock also just looks like a printing error.
-- **Canvas and WebGL can't read CSS variables.** Both the swirl and the dither
-  pipeline re-read the theme's inks on every switch — the swirl re-bakes its
-  whole sprite sheet, and the dither shader thresholds into `uInk`/`uPaper`
-  uniforms rather than emitting `#000`/`#fff`, so a 1-bit print is made of the
-  surface it sits on instead of dropping a white rectangle onto a dark page.
+GitHub is fetched **at build time**, with independent requests bounded at five
+seconds. The deployed HTML changes on the next build/deployment. A cache TTL
+does not refresh an already deployed page. Rebuild after repository changes;
+no automatic recurring rebuild is configured.
 
----
+`.github-cache.json` is an ignored, versioned, complete-only cache: six hours
+without a token, thirty minutes with one. Partial refreshes never overwrite a
+complete snapshot. A failed refresh serves the last complete snapshot as stale;
+a cold failure serves partial data or an unavailable notice while retaining all
+handwritten work. Old or malformed caches are discarded. Delete this one file
+to force a refresh. Fresh CI checkouts have no cache; CI deliberately checks that
+an offline cold build succeeds. If your deployment requires a persistent stale
+snapshot, restore/save this file through your CI cache before/after the build.
 
-## Where the content lives
-
-**Every string on the site is in `src/lib/content.ts`.** Nothing is hardcoded in
-components. Open that one file to change the copy.
-
-Entries marked `TODO(CV)` are placeholders awaiting your CV text:
-
-| Marker | What it needs |
-|---|---|
-| `identity.roles` | the roles you want typed in the hero |
-| `identity.email` | your email — the contact form builds a `mailto:` from it |
-| `copy.about` | your About paragraph in your own voice |
-| `projects` | your projects — currently seeded from the two GitHub accounts |
-| `experience` | your work history |
-| `stack` | your tools, grouped |
-
-Search the repo for `TODO(CV)` to find every one:
+## Verification
 
 ```bash
-grep -rn 'TODO(CV)' src/
+npm run check         # frontend diagnostics AND separate API TypeScript check
+npm test              # focused Node tests, mocked transports, no credentials/email
+npm run build         # static output in build/
+npm run preview       # production frontend at localhost:4173
+npm run verify        # checks + tests + production build
 ```
 
----
+The tests cover field validation, contact failure/recovery responses, request
+parsing and limits, origins, shared-quota requests, provider rejection/timeouts,
+GitHub partial/stale/offline behavior, corrupt caches and case-study metadata.
+They do not verify real provider delivery or Vercel deployment behavior.
 
-## File map
-
-```
-src/
-├── app.html                  pre-paint motion + theme scripts (inline, must stay first)
-├── app.css                   the design system: tokens, chrome, layout recipes
-│   └── lib/
-│       ├── content.ts            ← all site copy + the CV, transcribed
-│       ├── icons.ts              1-bit SVG icon set (black only — the hover filter depends on it)
-│       ├── motion.svelte.ts      the single motion switch + rAF latch
-│       ├── theme.svelte.ts       the single theme switch + OS-following
-│       ├── actions/zoom.ts       the System 1 zoom-rectangle window entrance
-│       ├── gl/dither.ts          the Bayer 8×8 ordered-dither WebGL pipeline
-│       ├── server/
-│       │   ├── github.ts         fetches the three accounts at BUILD time
-│       │   └── github-cache.ts   6-hour disk cache + stale fallback
-│       └── components/
-│           ├── MenuBar.svelte    sticky chrome, clock, pull-down, motion + theme toggles
-│           ├── Window.svelte     the window form (+ --dialog variant)
-│           ├── SectionHead.svelte
-│           ├── Hero.svelte
-│           ├── Swirl.svelte      the 1-bit glyph field
-│           ├── Typewriter.svelte
-│           ├── FileCard.svelte   Finder icon view
-│           ├── AccountCard.svelte  GitHub profile card
-│           ├── DitherMedia.svelte  dithered image with Bayer-order reveal
-│           └── Desktop.svelte    the footer, which doubles as site navigation
-└── routes/
-    ├── +layout.svelte
-    ├── +page.svelte             home
-    ├── work/+page.server.ts     ← the only route that hits the network
-    ├── work/+page.svelte
-    ├── about/+page.svelte
-    ├── cv/+page.svelte          the CV as a document + print stylesheet
-    └── contact/+page.svelte
-api/
-└── contact.ts              Vercel function → MailerSend (holds the API token)
-```
-
----
-
----
-
-## Where the content comes from
-
-| What | Source |
-|---|---|
-| Identity, roles, experience, skills, education, certifications, awards, languages | `Mikail_Thoriq_Banowo_CV_ID_V1-1.pdf`, transcribed into `content.ts` and translated to English |
-| The three hand-written project cards | The CV's *PROYEK PILIHAN* (`featured` in `content.ts`) |
-| Everything in the "Repositories" window | The GitHub API, at build time |
-| The PDF download button | `/static/cv/mikail-thoriq-banowo-cv.pdf`, a copy of the original |
-
-`content.ts` is the single source of truth for prose. `experience` is derived from
-`roles` so the About page and the CV page can never disagree.
-
-### The GitHub fetch
-
-`riqalter` and `thq642` (users) and `AnimaFlow` (org) are listed in `accounts` in
-`content.ts`. `work/+page.server.ts` calls the API once during `vite build` and
-the result is baked into the static HTML — the visitor never talks to GitHub,
-and there is no client-side rate-limit exposure.
-
-**Add an API token (recommended).** Unauthenticated, GitHub allows 60 requests
-per hour per IP and a build spends six of them. A token raises that to 5000:
+After a Vercel preview is deployed, run this validation-only smoke test:
 
 ```bash
-cp .env.example .env      # then paste the token into GITHUB_TOKEN=
+PREVIEW_URL=https://your-preview.vercel.app npm run test:preview
 ```
 
-A fine-grained token with read-only public access is enough — this build never
-writes to GitHub. `.env` is gitignored. With a token the cache window drops from
-6 hours to 30 minutes, so every build sees fresh data.
+It sends empty fields and requires a prompt 400 response with field errors.
+It cannot reach Redis or send mail. For protected previews, provide
+`VERCEL_AUTOMATION_BYPASS_SECRET` through the environment. The same check is
+available as the manual **Contact preview smoke** GitHub Actions workflow.
+The **Verify** workflow runs clean installation, both checks, offline tests and
+a cold offline production build on pushes and pull requests.
 
-**The cache exists so a build never ships an empty page.** Results are written to
-`.github-cache.json` at the repo root. If the network fails or you are
-rate-limited, the last good copy is served and the window says so. Delete the
-file to force a refresh.
+## Deployment and discovery
 
-Adding a fourth account is one line in `accounts`; nothing else needs touching.
+`vercel.json` serves `build/` and deploys `api/contact.ts` with a 15-second
+invocation budget. Configure the environment before enabling real sending.
+On another static host, the frontend works and offers the email draft action;
+the host needs an equivalent function to enable form delivery.
 
----
+`src/lib/seo.ts` defines the production origin, route-specific sharing metadata,
+canonical URLs and public paths. Change its origin if moving domains. Sitemap
+and robots endpoints are prerendered as `build/sitemap.xml` and `build/robots.txt`.
+Pages use directory-style URLs with trailing slashes.
 
-## Notes for whoever edits this next
-
-- **Motion is resolved in an inline `<head>` script before first paint.** Do not
-  move it into a module. If JS never runs, `<html>` never gets `.js`, and every
-  window stays visible instead of being hidden at `opacity: 0`.
-- **The dither pipeline gamma-corrects before thresholding** (`sqrt(luma)`).
-  Without it, dark artwork dithers into noise.
-- **The dither reveal is Bayer-ordered in 2×2-cell blocks**, not a cross-fade.
-  That difference is the whole point of the effect.
-- **DPR is capped at 1.5** in the renderer. Past that the extra fragments buy
-  nothing on a 1-bit image.
-- **Icons must stay pure black/white/red.** The hover recolour is a single CSS
-  filter (`invert(1) hue-rotate(180deg)`); an orange icon would break it silently.
-- **The contact form posts to `/api/contact`**, a Vercel serverless function that
-  forwards to MailerSend. The API token is a Vercel environment variable and
-  never reaches the browser — a client-side fetch would publish it in the
-  bundle. If the function is unreachable (e.g. plain `vite dev`), the form falls
-  back to `mailto:` automatically.
-- **The honeypot field must stay reachable to bots.** It is positioned
-  off-screen, not `display: none` — a bot filtering on visibility would skip it.
-
-## Deploying
-
-`npm run build` writes a fully static site to `./build`. `vercel.json` tells
-Vercel to serve that directory *and* deploy `api/contact.ts` as a serverless
-function, so the site and the contact endpoint ship together.
-
-### Contact form setup (Vercel + MailerSend)
-
-The function needs these environment variables — Vercel dashboard → Project →
-Settings → Environment Variables. Set them for **all** environments:
-
-| Variable | Required | Notes |
-|---|---|---|
-| `MAILERSEND_API_TOKEN` | yes | MailerSend → Settings → API tokens |
-| `MAILERSEND_TO` | yes | where messages should land |
-| `MAILERSEND_FROM` | yes¹ | must be a verified sender in MailerSend |
-| `MAILERSEND_FROM_NAME` | no | display name, defaults to the site name |
-| `ALLOWED_ORIGIN` | no | defaults to the deploy's own host |
-
-¹ falls back to `MAILERSEND_TO` if unset, which is the right default for a
-Gmail sender account before you verify a domain.
-
-`vercel dev` runs the function locally; plain `npm run dev` does not, so the
-form falls back to `mailto:` there. To test the real path, run `vercel dev`.
-
-**On any other static host** (Netlify, Cloudflare Pages, GitHub Pages) the
-static site still builds and deploys unchanged — only the form degrades to
-`mailto:`, because those hosts need their own function format.
-
-### Other hosts
-
-Drop `build/` on any static host. `trailingSlash` is set to `always`, so enable
-"clean URLs"/directory-style routing if your host needs it.
-
-For GitHub Pages project sites, set `base` in `svelte.config.js`:
-
-```js
-kit: { paths: { base: '/your-repo' } }
-```
+The original PDF is served at `/cv/mikail-thoriq-banowo-cv.pdf`; the CV route
+also has a print stylesheet. Theme and motion preferences resolve before first
+paint; preserve the existing keyboard focus, reduced-motion and hidden-tab
+animation behavior. The unused Japanese font was removed; body and mono fonts
+load only their Latin subsets, with system fallback for other scripts.

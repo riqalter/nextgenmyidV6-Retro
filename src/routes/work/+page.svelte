@@ -1,153 +1,73 @@
 <script lang="ts">
 	import { zoom } from '$lib/actions/zoom';
-	import { featured, sections } from '$lib/content';
+	import { accounts, featured, sections } from '$lib/content';
+	import { repositoryStatus } from '$lib/github-status';
 	import SectionHead from '$lib/components/SectionHead.svelte';
 	import Window from '$lib/components/Window.svelte';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import AccountCard from '$lib/components/AccountCard.svelte';
 	import type { PageData } from './$types';
-
 	let { data }: { data: PageData } = $props();
-
-	// The CV highlights lead; the live repositories follow. On an offline
-	// build the second window simply does not exist — the first still stands.
-	const all = $derived([...featured, ...data.projects]);
-	const total = $derived(all.length);
-	const technologies = $derived(new Set(all.flatMap((p) => p.stack)).size);
 </script>
 
-<svelte:head>
-	<title>Work — Mikail Thoriq</title>
-	<meta
-		name="description"
-		content="Selected projects and repositories by Mikail Thoriq — AI/ML, backend and full-stack work."
-	/>
-</svelte:head>
+<svelte:head><title>Work — Mikail Thoriq</title></svelte:head>
 
 <section class="section">
-	<SectionHead
-		kicker={sections.work.kicker}
-		title={sections.work.title}
-		sub={sections.work.sub}
-	/>
-
+	<SectionHead level={1} kicker={sections.work.kicker} title={sections.work.title} sub="three projects, from problem to implementation" />
 	<div use:zoom>
-		<Window title="Work — Finder">
+		<Window title="Selected work — Finder">
 			{#snippet children()}
-				<p class="finder-info">
-					<span>{total} items</span>
-					<span>{technologies} technologies</span>
-					<span>sorted by last push</span>
-				</p>
-
-				<div class="finder-grid">
-					{#each featured as project (project.slug)}
-						<FileCard {project} />
-					{/each}
+				<p class="finder-info"><span>{featured.length} featured projects</span><span>research · product · computer vision</span></p>
+				<div class="finder-grid featured-grid">
+					{#each featured as project (project.slug)}<FileCard {project} />{/each}
 				</div>
-
-				<p class="finder-status">
-					<span class="finder-status-label"
-						>● {featured.length} selected from the CV</span
-					>
-				</p>
+				<p class="finder-status"><span class="finder-status-label">Read the problem, my role and the evidence</span></p>
 			{/snippet}
 		</Window>
 	</div>
 </section>
 
-{#if data.accounts.length}
-	<section class="section">
-		<SectionHead kicker="02.1" title="Accounts" sub="where the code lives" />
-
-		<div class="account-grid" use:zoom>
-			{#each data.accounts as account (account.login)}
-				<AccountCard {account} />
-			{/each}
-		</div>
-	</section>
-{/if}
-
 <section class="section">
-	<SectionHead kicker="02.2" title="Repositories" sub="pulled from the GitHub API" />
-
-	{#if data.ok}
-		<div use:zoom>
-			<Window title="GitHub — all repositories">
+	<SectionHead kicker="02.1" title="Repository archive" sub="experiments and other source code" />
+	<p class="snapshot-note">{repositoryStatus(data)}</p>
+	<p class="snapshot-note">This list is saved when the site is built. It updates with the next deployment.</p>
+	<details class="archive">
+		<summary>Browse recent repositories ({data.projects.length})</summary>
+		{#if data.accounts.length}
+			<div class="account-grid">
+				{#each data.accounts as account (account.login)}<AccountCard {account} />{/each}
+			</div>
+		{/if}
+		{#if data.status !== 'unavailable'}
+			<Window title="GitHub — recent repositories">
 				{#snippet children()}
 					<p class="finder-info">
-						<span>{data.projects.length} repositories</span>
-						<span>non-fork · not archived</span>
-						<span>fetched {data.fetchedAt}</span>
+						<span>{data.projects.length} repositories</span><span>snapshot {data.fetchedAt.slice(0, 10)} UTC</span>
 					</p>
-
-					{#if data.error}
-						<p class="stale-note">
-							Live fetch failed at build time, so this is the last cached copy.
-						</p>
-					{/if}
-
+					<p class="archive-scope">Up to 18 non-fork, non-archived repositories per account, from its first 100 results. Featured work is excluded. Ordered by last push.</p>
+					{#if data.status === 'partial'}<p class="archive-scope">Missing accounts: {data.failedAccounts.join(', ')}.</p>{/if}
 					<div class="finder-grid">
-						{#each data.projects as project (project.slug)}
-							<FileCard {project} />
-						{/each}
+						{#each data.projects as project (project.slug)}<FileCard {project} />{/each}
 					</div>
-
-					<p class="finder-status">
-						<span class="finder-status-label"
-							>● {data.projects.length} of {data.projects.length} selected</span
-						>
-					</p>
+					{#if !data.projects.length}<p>No recent repositories in this snapshot. Explore the accounts below.</p>{/if}
+					<p class="finder-status"><span class="finder-status-label">{data.projects.length} source repositories shown</span></p>
 				{/snippet}
 			</Window>
-		</div>
-	{:else}
-		<div use:zoom>
-			<Window title="GitHub — unavailable" dialog>
-				{#snippet children()}
-					<div class="prose">
-						<p>
-							The GitHub API could not be reached when this page was built, so the
-							repository list is missing. The three projects above are written by hand
-							and are always accurate.
-						</p>
-						{#if data.error}
-							<p class="fetch-error">{data.error}</p>
-						{/if}
-						<p>
-							<a class="btn btn--default" href="https://github.com/riqalter"
-								>Open github.com/riqalter ↗</a
-							>
-						</p>
-					</div>
-				{/snippet}
-			</Window>
-		</div>
-	{/if}
+		{/if}
+		<p class="all-repos">Explore each full archive on GitHub:</p>
+		<ul class="account-links">
+			{#each accounts as account}<li><a href="https://github.com/{account.login}?tab=repositories" target="_blank" rel="noopener">{account.login}</a></li>{/each}
+		</ul>
+	</details>
 </section>
 
 <style>
-	/* Same recipe as .finder-grid, one column narrower so the three accounts
-	   sit side by side on a desktop without the bio line wrapping too early. */
-	.account-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-		gap: 1rem;
-	}
-
-	.fetch-error {
-		font-family: var(--font-mono);
-		font-size: 1.1rem;
-		color: var(--muted);
-		overflow-wrap: anywhere;
-	}
-
-	.stale-note {
-		padding: 0.35rem 0.4rem;
-		margin-top: 0.4rem;
-		border: 1px dashed var(--red);
-		font-family: var(--font-mono);
-		font-size: 1.1rem;
-		color: var(--red);
-	}
+	.snapshot-note { max-width: 72ch; margin-bottom: 0.75rem; }
+	.archive { margin-top: 1.5rem; }
+	.archive summary { cursor: pointer; font-family: var(--font-ui); font-size: 1.2rem; padding-block: 1rem; border-block: var(--line) solid var(--ink); }
+	.archive summary:hover { color: var(--red); }
+	.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; margin-block: 2rem; }
+	.archive-scope { margin-block: 1rem; max-width: 72ch; color: var(--muted); }
+	.all-repos { margin-top: 2rem; }
+	.account-links { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; padding-left: 1.25rem; margin-top: 0.5rem; }
 </style>

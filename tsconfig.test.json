@@ -1,0 +1,5 @@
+{
+	"extends": "./tsconfig.api.json",
+	"compilerOptions": { "noEmit": false, "outDir": ".test-build", "rootDir": "." },
+	"include": ["tests/**/*.ts", "api/**/*.ts", "src/lib/contact.ts", "src/lib/server/*.ts", "src/lib/github-status.ts", "src/lib/seo.ts", "src/lib/case-studies.ts"]
+}

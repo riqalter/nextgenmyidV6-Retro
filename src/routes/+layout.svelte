@@ -1,14 +1,14 @@
 <script lang="ts">
 	import '@fontsource-variable/pixelify-sans';
-	import '@fontsource/atkinson-hyperlegible/400.css';
-	import '@fontsource/atkinson-hyperlegible/400-italic.css';
-	import '@fontsource/atkinson-hyperlegible/700.css';
-	import '@fontsource/vt323';
-	import '@fontsource/dotgothic16';
+	import '@fontsource/atkinson-hyperlegible/latin-400.css';
+	import '@fontsource/atkinson-hyperlegible/latin-400-italic.css';
+	import '@fontsource/atkinson-hyperlegible/latin-700.css';
+	import '@fontsource/vt323/latin-400.css';
 	import '../app.css';
 
 	import { page } from '$app/state';
 	import { nav, identity } from '$lib/content';
+	import { pageMetadata } from '$lib/seo';
 	import MenuBar from '$lib/components/MenuBar.svelte';
 	import Desktop from '$lib/components/Desktop.svelte';
 	import { watchSystemTheme } from '$lib/theme.svelte';
@@ -18,24 +18,21 @@
 	// follow the OS only until the visitor expresses a preference
 	$effect(() => watchSystemTheme());
 
-	// the title is the only per-route thing the chrome needs to know
-	const titles: Record<string, string> = {
-		'/': identity.name,
-		'/work/': 'Work — ' + identity.name,
-		'/about/': 'About — ' + identity.name,
-		'/cv/': 'CV — ' + identity.name,
-		'/contact/': 'Contact — ' + identity.name
-	};
-
-	const title = $derived(titles[page.url.pathname] ?? identity.name);
+	const meta = $derived(pageMetadata(page.url.pathname));
 </script>
 
 <svelte:head>
-	<title>{title}</title>
-	<meta
-		name="description"
-		content="{identity.fullName} — {identity.title.toLowerCase()} based in {identity.location}."
-	/>
+	<title>{meta.title}</title>
+	<meta name="description" content={meta.description} />
+	<link rel="canonical" href={meta.canonical} />
+	<meta property="og:site_name" content={identity.name} />
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content={meta.title} />
+	<meta property="og:description" content={meta.description} />
+	<meta property="og:url" content={meta.canonical} />
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content={meta.title} />
+	<meta name="twitter:description" content={meta.description} />
 </svelte:head>
 
 <a class="skip" href="#main">Skip to content</a>

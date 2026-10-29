@@ -8,7 +8,7 @@ const config = {
 		adapter: adapter({
 			pages: 'build',
 			assets: 'build',
-			// Sitemap + robots are static; no server routes exist.
+			// Discovery endpoints and pages are prerendered into the static build.
 			fallback: undefined,
 			precompress: false,
 			strict: true
