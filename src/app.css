@@ -174,6 +174,60 @@ a:hover {
 	color: var(--paper);
 }
 
+/* Macintosh-style chrome, using the same paper, rules and halftone as windows.
+   Keep native scrolling and let high-contrast mode use the system controls. */
+@media (forced-colors: none) {
+	/* Firefox keeps its native geometry; Chromium/WebKit get the drawn chrome. */
+	@supports not selector(::-webkit-scrollbar) {
+		* {
+			scrollbar-color: var(--ink) var(--paper);
+		}
+	}
+
+	::-webkit-scrollbar {
+		width: 18px;
+		height: 18px;
+		background: var(--paper);
+	}
+
+	::-webkit-scrollbar-track {
+		background: var(--pat-25) 0 0 / 4px 4px, var(--paper);
+		border-left: var(--line) solid var(--ink);
+	}
+
+	::-webkit-scrollbar-track:horizontal {
+		border-left: 0;
+		border-top: var(--line) solid var(--ink);
+	}
+
+	::-webkit-scrollbar-thumb {
+		min-width: 48px;
+		min-height: 48px;
+		border: var(--line) solid var(--ink);
+		border-radius: 0;
+		background: var(--pat-rule) center / 8px 7px no-repeat, var(--paper);
+		box-shadow: inset 0 0 0 2px var(--paper);
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background: var(--ink);
+	}
+
+	::-webkit-scrollbar-thumb:active {
+		background: var(--red);
+	}
+
+	::-webkit-scrollbar-button {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	::-webkit-scrollbar-corner {
+		background: var(--paper);
+	}
+}
+
 /* ============================================================================
    3. LAYOUT
    ========================================================================= */
