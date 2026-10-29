@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-assert(process.env.PREVIEW_URL, 'Set PREVIEW_URL to a running local or Vercel preview URL.');
+assert(process.env.PREVIEW_URL, 'Set PREVIEW_URL to a running local, Vercel or Netlify preview URL.');
 const url = new URL('/api/contact', process.env.PREVIEW_URL);
 const headers = { 'Content-Type': 'application/json' };
 if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {

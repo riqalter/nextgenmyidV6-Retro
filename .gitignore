@@ -9,3 +9,4 @@ build/
 .openchamber/
 .test-build/
 .local-api/
+.netlify/

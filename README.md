@@ -1,8 +1,8 @@
 # Mikail Thoriq — personal site
 
 A 1-bit portfolio built with Svelte 5 and SvelteKit. Static pages and three
-engineering case studies sit inside a pixel desktop; a separate Vercel Node
-function handles contact email.
+engineering case studies sit inside a pixel desktop; a separate serverless
+function handles contact email on Vercel or Netlify.
 
 ![Home](docs/screenshots/home.png)
 
@@ -24,17 +24,24 @@ npm run dev           # frontend, http://localhost:5173
 npm run dev:full      # frontend + real local contact handler, reads .env
 ```
 
-`dev:full` compiles the same handler deployed to Vercel and mounts it in Vite.
-Restart it after API source or .env changes. `vercel dev` is another way to test
-the platform's request helpers. Plain `dev` and `preview` do not mount the API:
+`dev:full` compiles the Node handler and shared contact service and mounts them
+in Vite. Restart it after API source or .env changes. `vercel dev` tests Vercel's
+request helpers; `npx netlify-cli dev` tests Netlify's function at
+`http://localhost:8888` using the checked-in configuration and local `.env`.
+Plain `dev` and `preview` do not mount the API:
 the contact page offers an explicit email-app action after a failed request.
 It keeps the entered draft and never opens another app automatically.
 
 ## Environment configuration
 
 All credentials remain server-side. `.env` is ignored; `.env.example` contains
-the complete template. Also set the relevant variables in the Vercel project
+the complete template. Also set the relevant variables in your hosting project
 for each deployment environment; local .env values are not uploaded for you.
+On Netlify, set contact variables through the UI, CLI or API with the Functions
+scope when scope selection is available. Build-time GitHub variables need the
+Builds scope. Variables in `netlify.toml` are not available to functions at
+runtime. Redeploy after changing hosted variables. See
+[Netlify's function environment documentation](https://docs.netlify.com/build/functions/environment-variables/).
 
 | Variable | Use |
 | --- | --- |
@@ -56,7 +63,8 @@ An arbitrary Gmail address is not a verified sender just because it is yours.
 
 The contact function accepts only JSON POSTs, validates fields before contacting
 external services, checks a honeypot, and sends plain text with the visitor as
-Reply-To. Vercel's parsed `req.body` and raw Node streams are both supported.
+Reply-To. Vercel's parsed `req.body`, raw Node streams and Netlify's Web Request
+streams are supported by the hosting adapters and shared contact service.
 Requests have a 24 KB body ceiling, a 2-second raw-body wait, a 2-second Redis
 timeout and a 6-second provider timeout. The browser stops waiting after 12 seconds.
 Only a MailerSend queued response with a message ID counts as accepted;
@@ -67,15 +75,17 @@ acceptance is not a delivery receipt. Suppressed or paused sends return failure.
 An atomic Redis script allows 5 requests per IP per minute, plus the shared
 daily quota. Keys expire and contain keyed digests instead of raw IPs. On
 Vercel, the function uses its edge-provided `x-vercel-forwarded-for` header;
-local development uses the socket address. Deploying this handler behind a
-different proxy requires reviewing that trust boundary.
+Netlify uses the platform's `context.ip`, ignoring forwarding headers supplied
+by visitors. Local `dev:full` uses the socket address. Both hosts share quota
+when configured with the same Redis database, token and recipient. Deploying
+behind a different proxy requires reviewing that trust boundary.
 
 Missing configuration or an unavailable limiter disables sending and leaves
 direct email available. Origin checks limit browser misuse; direct scripts
 without an Origin still pass through the same shared quota. Requests accepted
 by the limiter consume quota even if the mail provider later fails.
 
-Vercel function logs contain only outcome events and provider status codes:
+Function logs on either host contain only outcome events and provider status codes:
 `accepted`, `throttled`, `configuration_missing`, `limiter_unavailable`,
 `provider_rejected`, `provider_unreachable`. Inspect counts and failures there,
 and delivery status, suppression and sending volume in the MailerSend dashboard.
@@ -122,12 +132,14 @@ npm run verify        # checks + tests + production build
 The tests cover field validation, contact failure/recovery responses, request
 parsing and limits, origins, shared-quota requests, provider rejection/timeouts,
 GitHub partial/stale/offline behavior, corrupt caches and case-study metadata.
-They do not verify real provider delivery or Vercel deployment behavior.
+Netlify adapter tests also cover streamed bodies, trusted client IPs and response
+headers. Tests do not verify real provider delivery or hosted deployment behavior.
 
-After a Vercel preview is deployed, run this validation-only smoke test:
+After a Vercel or Netlify preview is deployed, run this validation-only smoke test:
 
 ```bash
 PREVIEW_URL=https://your-preview.vercel.app npm run test:preview
+# Or use https://your-preview.netlify.app (also works with netlify dev on :8888).
 ```
 
 It sends empty fields and requires a prompt 400 response with field errors.
@@ -140,9 +152,26 @@ a cold offline production build on pushes and pull requests.
 ## Deployment and discovery
 
 `vercel.json` serves `build/` and deploys `api/contact.ts` with a 15-second
-invocation budget. Configure the environment before enabling real sending.
-On another static host, the frontend works and offers the email draft action;
-the host needs an equivalent function to enable form delivery.
+invocation budget.
+
+For Netlify, import this repository with its root as the base directory.
+`netlify.toml` selects Node.js 22, runs `npm run build`, publishes `build/`, and
+bundles `netlify/functions/contact.ts` with esbuild. The function's `config.path`
+serves `/api/contact`, so the frontend uses the same URL on both platforms.
+The existing static SvelteKit adapter is sufficient; no adapter switch or SPA
+catch-all redirect is needed. See
+[Netlify's static SvelteKit setup](https://docs.netlify.com/build/frameworks/framework-setup-guides/sveltekit/)
+and [function routing](https://docs.netlify.com/build/functions/configuration/).
+
+Before enabling real sending, set the MailerSend and Upstash variables listed
+above in the hosting project. Leave `ALLOWED_ORIGIN` blank for same-host checks
+on preview URLs, or set it to the production origin in the production context
+only. Deploy through Git or the Netlify CLI so the function is bundled with the
+site; uploading only `build/` does not include the contact API. Run the preview
+smoke test against the deployed URL to confirm routing without sending mail.
+
+On other static hosts, the frontend offers the email draft action; form delivery
+requires an equivalent function.
 
 `src/lib/seo.ts` defines the production origin, route-specific sharing metadata,
 canonical URLs and public paths. Change its origin if moving domains. Sitemap

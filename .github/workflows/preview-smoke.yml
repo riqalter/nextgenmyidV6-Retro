@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       preview_url:
-        description: Vercel preview URL to verify (validation only; no mail)
+        description: Vercel or Netlify preview URL to verify (validation only; no mail)
         required: true
         type: string
 jobs:

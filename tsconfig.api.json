@@ -4,5 +4,5 @@
 		"lib": ["ES2023", "DOM"], "types": ["node"], "strict": true,
 		"skipLibCheck": true, "noEmit": true
 	},
-	"include": ["api/**/*.ts", "src/lib/contact.ts", "src/lib/server/contact-rate-limit.ts"]
+	"include": ["api/**/*.ts", "netlify/functions/**/*.ts", "src/lib/contact.ts", "src/lib/server/*.ts"]
 }
