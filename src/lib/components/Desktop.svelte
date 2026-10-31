@@ -1,127 +1,302 @@
 <script lang="ts">
-	import { identity, links, nav } from '$lib/content';
-	import { icons, type IconName } from '$lib/icons';
+	import { footer, identity, links, nav } from '$lib/content';
 
 	const year = new Date().getFullYear();
-
-	// the desktop doubles as the site's main navigation — same list the menu
-	// bar renders, with one icon per window
-	const art: Record<string, IconName> = {
-		'/': 'monitor',
-		'/work': 'folder',
-		'/about': 'terminal',
-		'/cv': 'film',
-		'/contact': 'mail'
-	};
-	const shortcuts = nav.map((item) => ({ ...item, icon: art[item.href] ?? 'folder' }));
 </script>
 
 <footer class="desktop">
-	<div class="desktop-icons">
-		{#each shortcuts as item (item.href)}
-			<a class="desktop-icon" href={item.href}>
-				<span
-					class="desktop-icon-art"
-					style="--icon: {icons[item.icon]}"
-					aria-hidden="true"
-				></span>
-				<span class="desktop-caption">{item.label}</span>
-			</a>
-		{/each}
-		{#each links as link (link.href)}
-			<a class="desktop-icon" href={link.href} rel="me noopener" target="_blank">
-				<span class="desktop-icon-art" style="--icon: {icons.code}" aria-hidden="true"></span>
-				<span class="desktop-caption">{link.label}</span>
-			</a>
-		{/each}
+	<div class="footer-inner">
+		<div class="footer-grid">
+			<div class="footer-brand">
+				<a class="wordmark" href="/" aria-label={`${identity.name} — home`}>
+					<span class="brand-mark" aria-hidden="true">&gt;_</span>
+					<span>{identity.name}</span>
+				</a>
+				<p class="footer-blurb">{footer.blurb}</p>
+				<p class="footer-location">{identity.location}</p>
+				<a class="footer-email" href={`mailto:${identity.email}`}>{identity.email}</a>
+			</div>
+
+			<nav class="footer-column" aria-labelledby="footer-explore">
+				<h2 id="footer-explore">{footer.explore}</h2>
+				<ul>
+					{#each nav as item (item.href)}
+						<li><a href={item.href}>{item.label}</a></li>
+					{/each}
+				</ul>
+			</nav>
+
+			<nav class="footer-column" aria-labelledby="footer-elsewhere">
+				<h2 id="footer-elsewhere">{footer.elsewhere}</h2>
+				<ul>
+					{#each links as link (link.href)}
+						<li>
+							<a href={link.href} rel="me noopener" target="_blank">
+								{link.footerLabel} <span class="external-arrow" aria-hidden="true">↗</span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</nav>
+
+			<div class="footer-column footer-contact">
+				<h2>{footer.contact}</h2>
+				<p>{footer.contactLead}</p>
+				<a class="contact-link" href="/contact">
+					{footer.contactAction}<span aria-hidden="true">↗</span>
+				</a>
+				{#if identity.available}
+					<p class="availability"><span aria-hidden="true"></span>{footer.available}</p>
+				{/if}
+			</div>
+		</div>
+
+		<div class="footer-meta">
+			<p>© {year} {identity.name}</p>
+			<p class="footer-colophon">{footer.colophon}</p>
+			<a class="back-top" href="#main">{footer.backToTop} <span aria-hidden="true">↑</span></a>
+		</div>
 	</div>
 
-	<div class="desktop-bar">
-		<p class="desktop-bar-left">
-			{identity.name} — {nav.length} windows open
-		</p>
-		<p class="desktop-bar-right">
-			© {year} · 1-bit, one red, light & dark
-		</p>
-	</div>
+	<div class="footer-landscape" aria-hidden="true"></div>
 </footer>
 
 <style>
 	.desktop {
+		/* A dark sky in both themes, using the site's existing ink and paper. */
+		--footer-ground: var(--ink);
+		--footer-ink: var(--paper);
 		margin-top: clamp(5rem, 12vw, 9rem);
 		border-top: var(--line) solid var(--ink);
-		/* fixed, not scroll — a checkerboard that scrolls gets resampled at
-		   sub-pixel offsets and shimmers. Pinned, it reads as a desktop. */
-		background: var(--pat-50) 0 0 / 4px 4px fixed;
+		background: var(--footer-ground);
+		color: var(--footer-ink);
 	}
 
-	.desktop-icons {
-		display: flex;
-		flex-wrap: wrap;
-		gap: clamp(1rem, 3vw, 2rem);
-		padding: 3.5rem var(--gutter);
+	:global([data-theme='dark']) .desktop {
+		--footer-ground: var(--paper);
+		--footer-ink: var(--ink);
+	}
+
+	.footer-inner {
+		position: relative;
+		z-index: 1;
 		max-width: var(--measure);
 		margin-inline: auto;
+		padding: clamp(3rem, 6vw, 5rem) var(--gutter) 0;
 	}
 
-	.desktop-icon {
+	.footer-grid {
 		display: grid;
-		justify-items: center;
-		gap: 0.4rem;
-		width: clamp(5rem, 12vw, 6.5rem);
+		grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.8fr) minmax(0, 1.15fr) minmax(0, 1.4fr);
+		gap: 2rem;
+	}
+
+	.footer-brand,
+	.footer-column {
+		min-width: 0;
+	}
+
+	.wordmark {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-height: 44px;
+		font: 600 1.55rem/1.1 var(--font-ui);
 		text-decoration: none;
 	}
 
-	.desktop-icon-art {
-		width: 44px;
-		height: 44px;
-		background: var(--ink);
-		/* the icon sits in a paper cut-out on the desktop pattern */
-		outline: 4px solid var(--paper);
-		mask-image: var(--icon);
-		-webkit-mask-image: var(--icon);
-		mask-size: 72%;
-		mask-position: center;
-		mask-repeat: no-repeat;
-		-webkit-mask-size: 72%;
-		-webkit-mask-position: center;
-		-webkit-mask-repeat: no-repeat;
+	.brand-mark {
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		flex-shrink: 0;
+		border: var(--line) solid currentColor;
+		font: 1.8rem/1 var(--font-mono);
 	}
 
-	/* one filter recolours the art without swapping assets: black stays black,
-	   white becomes black. Fragile by design — keep these icons pure. */
-	.desktop-icon:hover .desktop-icon-art,
-	.desktop-icon:focus-visible .desktop-icon-art {
-		filter: invert(1) hue-rotate(180deg);
+	.footer-blurb {
+		max-width: 26ch;
+		margin-top: 1.25rem;
+		font-size: 0.95rem;
+		line-height: 1.5;
 	}
 
-	.desktop-caption {
-		max-width: 100%;
-		padding: 0 0.3em;
-		background: var(--paper); /* punches out of the hatch */
-		font-family: var(--font-ui);
-		font-size: 0.9rem;
-		line-height: 1.2;
-		text-align: center;
+	.footer-location {
+		margin-top: 1.25rem;
+		font: 1.2rem/1.4 var(--font-mono);
+	}
+
+	.footer-email {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding-block: 0.4rem;
 		overflow-wrap: anywhere;
+		font-size: 0.9rem;
 	}
 
-	.desktop-bar {
+	.footer-column h2 {
+		margin-block: 0.4rem 1.35rem;
+		font: 500 1.1rem/1.2 var(--font-ui);
+	}
+
+	.footer-column h2::after {
+		content: '';
+		display: block;
+		width: 1.75rem;
+		height: 2px;
+		margin-top: 0.85rem;
+		background: currentColor;
+	}
+
+	.footer-column ul {
+		list-style: none;
+		padding: 0;
+	}
+
+	.footer-column li a {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 44px;
+		font-size: 0.95rem;
+		text-decoration: none;
+	}
+
+	.external-arrow {
+		font: 1.2rem/1 var(--font-mono);
+	}
+
+	.footer-contact > p {
+		max-width: 23ch;
+		font-size: 0.95rem;
+		line-height: 1.5;
+	}
+
+	.contact-link {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem 1rem;
+		align-items: center;
 		justify-content: space-between;
-		padding: 0.4rem var(--gutter);
-		background: var(--paper);
-		border-top: var(--line) solid var(--ink);
-		font-family: var(--font-mono);
-		font-size: 1.15rem;
+		gap: 1rem;
+		min-height: 44px;
+		margin-top: 1.2rem;
+		padding: 0.5rem 0.75rem;
+		border: var(--line) solid currentColor;
+		font: 1.1rem/1.2 var(--font-ui);
+		text-decoration: none;
 	}
 
-	@media (max-width: 520px) {
-		.desktop-icons {
-			padding: 2.5rem var(--gutter);
-			gap: 1rem;
+	.contact-link span {
+		font: 1.5rem/1 var(--font-mono);
+	}
+
+	.footer-contact .availability {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1rem;
+		font: 1.1rem/1.2 var(--font-mono);
+	}
+
+	.availability span {
+		width: 6px;
+		height: 6px;
+		flex-shrink: 0;
+		background: currentColor;
+	}
+
+	.footer-meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.75rem 1.5rem;
+		margin-top: clamp(2.5rem, 5vw, 4rem);
+		font: 1.1rem/1.3 var(--font-mono);
+	}
+
+	.back-top {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.65rem;
+		min-height: 44px;
+		text-decoration: none;
+	}
+
+	.desktop a:hover {
+		background: var(--footer-ink);
+		color: var(--footer-ground);
+	}
+
+	.desktop a:focus-visible {
+		outline-color: var(--footer-ink);
+	}
+
+	.footer-landscape {
+		height: clamp(14rem, 30vw, 30rem);
+		margin-top: -1rem;
+		background: var(--footer-ink);
+		/* Luminance turns the white terrain into paper and lets the sky and
+		   engraving reveal the footer ground. No fixed image colors. */
+		mask-image: url('/images/footer-landscape.webp');
+		mask-mode: luminance;
+		mask-size: cover;
+		mask-position: center bottom;
+		mask-repeat: no-repeat;
+	}
+
+	@media (max-width: 900px) {
+		.footer-grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 2.5rem 2rem;
+		}
+
+		.footer-brand {
+			grid-column: 1 / -1;
+		}
+
+		.footer-blurb {
+			max-width: 40ch;
+		}
+
+		.footer-location {
+			margin-top: 0.75rem;
+		}
+
+		.footer-column h2 {
+			margin-top: 0;
+		}
+	}
+
+	@media (max-width: 560px) {
+		.footer-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 2rem 1rem;
+		}
+
+		.footer-contact {
+			grid-column: 1 / -1;
+			max-width: 24rem;
+		}
+
+		.footer-meta {
+			gap: 0.25rem 1rem;
+		}
+
+		.footer-colophon {
+			order: 1;
+			width: 100%;
+		}
+
+		.footer-landscape {
+			margin-top: 0;
+		}
+	}
+
+	@media (forced-colors: active) {
+		.footer-landscape {
+			display: none;
 		}
 	}
 </style>

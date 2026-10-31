@@ -103,12 +103,25 @@ export const copy = {
 		'is open.'
 };
 
-export const links: { label: string; href: string }[] = [
-	{ label: 'github.com/riqalter', href: 'https://github.com/riqalter' },
-	{ label: 'github.com/thq642', href: 'https://github.com/thq642' },
-	{ label: 'github.com/AnimaFlow', href: 'https://github.com/AnimaFlow' },
-	{ label: 'linkedin.com/in/mikailthoriq', href: 'https://linkedin.com/in/mikailthoriq' }
+export const links: { label: string; footerLabel: string; href: string }[] = [
+	{ label: 'github.com/riqalter', footerLabel: 'GitHub / riqalter', href: 'https://github.com/riqalter' },
+	{ label: 'github.com/thq642', footerLabel: 'GitHub / thq642', href: 'https://github.com/thq642' },
+	{ label: 'github.com/AnimaFlow', footerLabel: 'AnimaFlow', href: 'https://github.com/AnimaFlow' },
+	{ label: 'linkedin.com/in/mikailthoriq', footerLabel: 'LinkedIn', href: 'https://linkedin.com/in/mikailthoriq' }
 ];
+
+/** Shared footer — the same person, at the end of every window. */
+export const footer = {
+	blurb: 'AI products, backend systems, and the web in between.',
+	explore: 'Explore',
+	elsewhere: 'Elsewhere',
+	contact: 'Have something in mind?',
+	contactLead: 'Good things start with a conversation.',
+	contactAction: 'Let’s talk',
+	available: 'Open to opportunities',
+	backToTop: 'Back to top',
+	colophon: '1-bit, one red, light & dark'
+};
 
 /** The three accounts whose repositories fill the Work window, in fetch order. */
 export const accounts = [
